@@ -186,8 +186,9 @@ def update_output_div(submit_button, input_value, stockprice_button, start_date,
       #yesterday_str = yesterday.strftime("%Y-%m-%d")
       
       stockprice_forecast = yf.download(str(input_value), str(onefifty_days_before_stockprice_str), str(yesterday_str) )
+      vix_data = yf.download('^VIX', str(onefifty_days_before_stockprice_str), str(yesterday_str) )
       stockprice_forecast.reset_index(inplace=True)
-      stockpricegraph = forecast_price(stockprice_forecast)
+      stockpricegraph = forecast_price(stockprice_forecast,vix_data)
       print("stockpricegraph",stockpricegraph)
    else:
       pass
