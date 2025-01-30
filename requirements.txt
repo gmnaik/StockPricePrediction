@@ -1,0 +1,20 @@
+dash
+dash-core-components
+dash-html-components
+dash-renderer
+dash-table
+Flask
+Flask-Compress
+gunicorn
+lxml
+numpy
+pandas
+plotly
+scikit-learn
+scipy
+yfinance
+torch
+xgboost
+matplotlib
+statsmodels
+-e .
