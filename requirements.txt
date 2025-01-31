@@ -7,7 +7,7 @@ Flask
 Flask-Compress
 gunicorn
 lxml
-numpy
+numpy==1.23.5
 pandas
 plotly
 scikit-learn
@@ -17,4 +17,5 @@ torch
 xgboost
 matplotlib
 statsmodels
+pmdarima
 -e .
