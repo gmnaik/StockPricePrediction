@@ -42,9 +42,14 @@ def forecast_price(stockprice,vix_data):
     stockprice.columns = stockprice.columns.droplevel(1)   #To drop Ticker column from a dataframe
     vix_data.columns = vix_data.columns.droplevel(1) 
     stockprice_original = stockprice.copy()
+    stockprice_original_two = stockprice.copy()
     vixdata_original = vix_data.copy()
     print("Inside forecast_price() function:\n",stockprice)
+    vixdata_original = vixdata_original.reset_index()
+    #print(vix_data[['Date']])
+    
     print("vix data:\n",vix_data)
+    print("vix data:\n",vix_data.columns)
     
     # Convert 'Date' column to datetime format
     stockprice['Date'] = pd.to_datetime(stockprice['Date'])
@@ -149,12 +154,198 @@ def forecast_price(stockprice,vix_data):
     
     ##########################################################################################################################
     
-    stock_data = stockprice_original[['Close']].rename(columns={'Close': 'Stock_Close'})
-    vix_data = vixdata_original[['Close']].rename(columns={'Close': 'VIX_Close'})
+    ''' 
+    # ARIMAX model with VIX = VIX['Close']
     
-    df = stock_data.merge(vix_data, left_index=True, right_index=True)
+    stock_data = stockprice_original[stockprice_original['Date'] >= '2020-01-01']
+    vix_data = vixdata_original[vixdata_original['Date'] >= '2020-01-01']
+    
+    stock_data = stock_data[['Close']].rename(columns={'Close': 'Stock_Close'})
+    vix_data = vix_data[['Close']].rename(columns={'Close': 'VIX_Close'})
+    
+    df = stock_data.join(vix_data, how='inner')
     
     print("df:\n",df.head(5))
+    
+    # Scale the data
+    scaler = MinMaxScaler()
+    df_scaled = pd.DataFrame(scaler.fit_transform(df), columns=df.columns, index=df.index)
+
+    # Split into training (80%) and testing (20%) sets
+    train_size = -90
+    train_data, test_data = df_scaled.iloc[:train_size], df_scaled.iloc[train_size:]
+
+    # Define endogenous (target) and exogenous (external factor) variables
+    y_train, X_train = train_data['Stock_Close'], train_data[['VIX_Close']]
+    y_test, X_test = test_data['Stock_Close'], test_data[['VIX_Close']]
+    
+    # Find the best ARIMA (p, d, q) using AutoARIMA
+    auto_arima_model = auto_arima(
+        y_train,
+        exogenous=X_train,  # Include external factor
+        seasonal=False,  # No seasonality in ARIMAX
+        stepwise=True,   # Efficient tuning
+        trace=True,      # Print results
+        max_p=5, max_q=5, max_d=2  # Limit search space
+    )
+
+    # Get the best order
+    best_p, best_d, best_q = auto_arima_model.order
+    print(f"Best ARIMAX order: (p={best_p}, d={best_d}, q={best_q})")
+    
+    # Define the ARIMAX model with the best parameters
+    model = SARIMAX(y_train, exog=X_train, order=(best_p, best_d, best_q), seasonal_order=(0,0,0,0))
+
+    # Fit the model
+    model_fit = model.fit(disp=False)
+
+    # Print model summary
+    print(model_fit.summary())
+    
+    # Predict future stock prices using test exogenous data
+    forecast = model_fit.forecast(steps=len(y_test), exog=X_test)
+
+    # Inverse transform predictions back to original scale
+    forecast_original = scaler.inverse_transform(
+        np.column_stack((forecast, X_test))
+    )[:, 0]  # Extract only stock price predictions
+
+    # Inverse transform actual values
+    y_test_original = scaler.inverse_transform(
+        np.column_stack((y_test, X_test))
+    )[:, 0]
+
+    # Convert results into a DataFrame
+    #results_df = pd.DataFrame({'Actual': y_test_original, 'Predicted': forecast_original}, index=y_test.index)
+
+    # Display first few rows
+    #print(results_df.head())
+    
+    # Step 4: Evaluate the ARIMA model
+    mae_arimax_vixclose = mean_absolute_error(y_test_original, forecast_original)
+    mse_arimax_vixclose = mean_squared_error(y_test_original, forecast_original)
+    rmse_arimax_vixclose = np.sqrt(mse_arimax_vixclose)
+
+    print(f'Mean Absolute Error (MAE): {mae_arimax_vixclose}')
+    print(f'Mean Squared Error (MSE): {mse_arimax_vixclose}')
+    print(f'Root Mean Squared Error (RMSE): {rmse_arimax_vixclose}')
+    
+    #print("stockprice_df_close_test:\n",stockprice_df_close_test)
+    
+    #print("forecast_inverted:\n",forecast_original)
+    
+    # Step 5: Plot actual vs predicted values
+    #plt.figure(figsize=(10, 6))
+    #plt.plot(y_test.index, y_test_original, label='Actual', color='blue')
+    #plt.plot(y_test.index, forecast_original, label='Predicted', color='red')
+    #plt.xlabel('Date')
+    #plt.ylabel('Price')
+    #plt.legend()
+    #plt.show()
+    
+    print("model with VIX = VIX['Close'] completed")
+    
+    
+    '''
+    ##########################################################################################################################
+    # ARIMAX model with VIX = VIX['Volume']
+    
+    stock_data = stockprice_original_two[stockprice_original_two['Date'] >= '2020-01-01']
+    #vix_data = vixdata_original[vixdata_original['Date'] >= '2020-01-01']
+    
+    print("stock_data columns:\n",stock_data.columns)
+    print("Volume value counts:\n",stock_data['Volume'].value_counts())
+    
+    stock_data = stock_data[['Close','Volume']]
+    #volume_data = stock_data[['Volume']]
+    
+    #print()
+    df = stock_data.copy()
+    #print("Volume value counts:\n",df['Volume'].value_counts())
+    print("df:\n",df.head(5))
+    
+    # Scale the data
+    scaler = MinMaxScaler()
+    df_scaled = pd.DataFrame(scaler.fit_transform(df), columns=df.columns, index=df.index)
+
+    # Split into training (80%) and testing (20%) sets
+    train_size = -90
+    train_data, test_data = df_scaled.iloc[:train_size], df_scaled.iloc[train_size:]
+
+    # Define endogenous (target) and exogenous (external factor) variables
+    y_train, X_train = train_data['Close'], train_data[['Volume']]
+    y_test, X_test = test_data['Close'], test_data[['Volume']]
+    
+    # Find the best ARIMA (p, d, q) using AutoARIMA
+    auto_arima_model = auto_arima(
+        y_train,
+        exogenous=X_train,  # Include external factor
+        seasonal=False,  # No seasonality in ARIMAX
+        stepwise=True,   # Efficient tuning
+        trace=True,      # Print results
+        max_p=5, max_q=5, max_d=3  # Limit search space
+    )
+
+    # Get the best order
+    best_p, best_d, best_q = auto_arima_model.order
+    print(f"Best ARIMAX order: (p={best_p}, d={best_d}, q={best_q})")
+    
+    # Define the ARIMAX model with the best parameters
+    model = SARIMAX(y_train, exog=X_train, order=(best_p, best_d, best_q), seasonal_order=(0,0,0,0))
+
+    # Fit the model
+    model_fit = model.fit(disp=False)
+
+    # Print model summary
+    print(model_fit.summary())
+    
+    # Predict future stock prices using test exogenous data
+    forecast = model_fit.forecast(steps=len(y_test), exog=X_test)
+
+    # Inverse transform predictions back to original scale
+    forecast_original = scaler.inverse_transform(
+        np.column_stack((forecast, X_test))
+    )[:, 0]  # Extract only stock price predictions
+
+    # Inverse transform actual values
+    y_test_original = scaler.inverse_transform(
+        np.column_stack((y_test, X_test))
+    )[:, 0]
+
+    # Convert results into a DataFrame
+    #results_df = pd.DataFrame({'Actual': y_test_original, 'Predicted': forecast_original}, index=y_test.index)
+
+    # Display first few rows
+    #print(results_df.head())
+    
+    # Step 4: Evaluate the ARIMA model
+    mae_arimax_volume = mean_absolute_error(y_test_original, forecast_original)
+    mse_arimax_volume = mean_squared_error(y_test_original, forecast_original)
+    rmse_arimax_volume = np.sqrt(mse_arimax_volume)
+
+    print(f'Mean Absolute Error (MAE): {mae_arimax_volume}')
+    print(f'Mean Squared Error (MSE): {mse_arimax_volume}')
+    print(f'Root Mean Squared Error (RMSE): {rmse_arimax_volume}')
+    
+    #print("stockprice_df_close_test:\n",stockprice_df_close_test)
+    
+    #print("forecast_inverted:\n",forecast_original)
+    
+    # Step 5: Plot actual vs predicted values
+    plt.figure(figsize=(10, 6))
+    plt.title("Stock Price Prediction with Volume as Exog variable")
+    plt.plot(y_test.index, y_test_original, label='Actual', color='blue')
+    plt.plot(y_test.index, forecast_original, label='Predicted', color='red')
+    plt.xlabel('Date')
+    plt.ylabel('Price')
+    plt.legend()
+    plt.show()
+    
+    print("model with VIX = VIX['Volume'] completed")
+
+    
+
+
     
     
         
